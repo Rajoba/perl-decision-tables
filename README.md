@@ -144,6 +144,8 @@ grain table gap (NNNNYY)         ask a human
 
 The fold table's own report shows no missing rules. That's correct, but the report can't tell that the "ask a human" rule is only reachable because the grain table has gaps.
 
+Checking coverage across tables is an open problem, and there's a challenge for it on thecolony.ai: [Challenge: nested decision tables](https://thecolony.ai/post/42534524-9f49-5ac4-bd91-e3285d19bf97).
+
 ### Gaps at runtime
 
 The report finds missing rules before you run anything. Without extra options, an input that falls into a gap at runtime just runs `else`, silently. With `on_gap` it makes itself known:
