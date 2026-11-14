@@ -22,7 +22,7 @@ prove t/
 
 ## A table
 
-The table is defined at the end of `et_check.pl`. This example decides the grain direction of a sheet (`lfr`, *Laufrichtung*: `SB` = *Schmalbahn*, short grain; `BB` = *Breitbahn*, long grain):
+The table is defined at the end of `et_check.pl`. This example decides the grain direction of a sheet (`lfr`, *Laufrichtung*: `SB` = *Schmalbahn*, long grain, parallel to the long side; `BB` = *Breitbahn*, short grain; `--` = square cut, where neither applies):
 
 ```perl
 my $rt = RegTable->new({
@@ -132,17 +132,18 @@ my $outer  = RegTable->new({
 
 The gap check doesn't look inside the called table yet. It treats the call like any other action.
 
-A complete example is [`examples/fold.pl`](examples/fold.pl). An outer table decides how to handle a sheet that gets folded and calls the grain table for the grain direction. Printing and packaging want opposite things: printers want the grain parallel to the fold, packaging the other way round. When the grain table can't decide (`--`), the sheet goes to a human:
+A complete example is [`examples/fold.pl`](examples/fold.pl). An outer table decides how to handle a sheet that gets folded and calls the grain table for the grain direction. Printing and packaging want opposite things: printers want the grain parallel to the fold, packaging the other way round. A square cut has no long side, so the grain table returns `--` and the sheet goes to a human:
 
 ```
 printing,  parallel              fold
 printing,  across                rotate sheet 90°
 packaging, parallel              rotate sheet 90°
 packaging, across                fold
-grain table gap (NNNNYY)         ask a human
+square cut                       ask a human
+gap NNNNYY (not square!)         ask a human
 ```
 
-The fold table's own report shows no missing rules. That's correct, but the report can't tell that the "ask a human" rule is only reachable because the grain table has gaps.
+The fold table's own report shows no missing rules. That's correct, but it misses something: `--` is supposed to mean "square cut" and nothing else. The last line isn't square, it falls through the gap `NNNNYY` in the grain table and gets `--` from `else`. It ends up with a human for the wrong reason, and the report can't tell the two cases apart.
 
 Checking coverage across tables is an open problem, and there's a challenge for it on thecolony.ai: [Challenge: nested decision tables](https://thecolony.ai/post/42534524-9f49-5ac4-bd91-e3285d19bf97).
 
@@ -187,7 +188,7 @@ prove t/
 - `t/conflict.t`: an added contradicting rule is reported as an overlap.
 - `t/redundant.t`: a duplicate rule and a covered rule are detected.
 - `t/code.t`: the compiled sub returns the right result for every branch of the table, including the gap and `x == y` (also when rules 2/3 fire at the same time), and prints nothing by default. A second small table checks that `else` runs only when no rule matched.
-- `t/fold.t`: the nested printing/packaging example gives the right decision for each case, including a gap in the grain table.
+- `t/fold.t`: the nested printing/packaging example gives the right decision for each case, including a square cut and a gap in the grain table that wrongly returns `--`.
 - `t/two_tables.t`: several tables at once and a table calling another one, with the results and reports of each table unaffected.
 - `t/on_gap.t`: silent by default, `warn`, `die` and a handler, with the pattern and input values in the message.
 - `t/negation.t`: exact negation (`>` → `<=`, `<` → `>=`, ...), contradictions across variables, and the boundary `|dx| == |dy|`, both in the report and in the compiled sub.
@@ -202,7 +203,7 @@ prove t/
 | Fehlende Regeln | missing rules |
 | überkreuzen sich | overlap |
 | sonst | else |
-| Laufrichtung (SB/BB) | grain direction (short/long grain) |
+| Laufrichtung (SB/BB) | grain direction (SB = Schmalbahn = long grain, BB = Breitbahn = short grain) |
 
 ## License
 
