@@ -393,15 +393,20 @@ sub turnTable
 				my	$self	= shift;
 				my  $param = shift;
 				my  $loc   = shift;
+				my  $opt   = shift || {};
+				my  $say   = $opt->{verbose} ? sub { print @_ } : sub {};
 
+				# Returns a sub that takes the values of @$param (in that order)
+				# and returns a hashref with the final values of @$loc.
+				# With { verbose => 1 } it also prints a trace of matched rules.
 				return sub { 
 					my %pidx = ();
 					my %lidx = ();
 					my $BA;
 
-					print 'code >>> my %pidx = ();'."\n";
-					print 'code >>> my %lidx = ();'."\n";
-					print 'code >>> my $BA;'."\n";
+					$say->('code >>> my %pidx = ();'."\n");
+					$say->('code >>> my %lidx = ();'."\n");
+					$say->('code >>> my $BA;'."\n");
 					
 					map{ $pidx{$param->[$_]} = $_ } (0..$#$param);
 					map{ $lidx{$loc->[$_]} = undef } (0..$#$loc);
@@ -418,7 +423,7 @@ sub turnTable
 						map{ $lidx{$_} = $_[$pidx{$_}] if !defined($lidx{$_}) && exists($lidx{$_}) } keys %pidx;
 
 						if($res){
-							print join("\n", @{$rs->code->{'Bed'}})."\n";
+							$say->(join("\n", @{$rs->code->{'Bed'}})."\n");
 							foreach my $a (@{$BA->{'Akt'}}){  
 								map{ 
 									$a =~ s/\b$_\b/\$\_\[$pidx{$_}\]/g;
@@ -427,8 +432,8 @@ sub turnTable
 									$a =~ s/\b$_\b/\$lidx\{\'$_\'\}/g;
 								} @$loc;
 								eval($a);
-								print "code >>>> $a\n";
-								print '~' x 65  . "\n";
+								$say->("code >>>> $a\n");
+								$say->('~' x 65  . "\n");
 							}					  
 							# last;
 						}
@@ -443,11 +448,13 @@ sub turnTable
 								$a =~ s/\b$_\b/\$lidx\{\'$_\'\}/g;
 							} keys %lidx;
 							eval($a);
-							print "ELSE >>>> $a\n";
-							print 'x' x 65  . "\n";
+							$say->("ELSE >>>> $a\n");
+							$say->('x' x 65  . "\n");
 						}  
 					}
-					map{ print "$_ == $lidx{$_}\n" if defined($lidx{$_}); } sort keys %lidx;
+					map{ $say->("$_ == $lidx{$_}\n") if defined($lidx{$_}); } sort keys %lidx;
+
+					return { %lidx };
 				}
 			}	# ----------  end of subroutine Code  ----------
 		}	# ----------  end of package RegTable  ----------
@@ -487,7 +494,9 @@ sub turnTable
 # 			        [[qw(1 1 1 - - - 1 0)], [qw(- - 1 -)]]],
 # 			else => [qw(- - - 1)]
 # 		});
-		my $rt = RegTable->new({
+# The example table: grain direction (lfr = Laufrichtung, SB/BB).
+sub example_table {
+		return RegTable->new({
 				Bedingungen => [
 				'x == y',
 				'x > y',
@@ -514,13 +523,17 @@ sub turnTable
 				],
 				else => [qw(1 - - 1 -)]
 			});
+}
+
+# Run the example only when started as a script, not when loaded with require/do.
+unless (caller) {
+		my $rt = example_table();
 		print "-----\n";
 		$rt->report;
 		print "\n";
 
-		my $cd = $rt->Code([qw(x y px1 py1 px2 py2 DBx DBy)], [qw(lfr DBx DBy)]);
+		my $cd = $rt->Code([qw(x y px1 py1 px2 py2 DBx DBy)], [qw(lfr DBx DBy)], { verbose => 1 });
 
-		&$cd(qw(100 70 20 20 300 3000 70 100));
-
-# print Dumper($cd)."\n";
-
+		my $result = $cd->(qw(100 70 20 20 300 3000 70 100));
+		print "\nResult: ", join(', ', map { "$_ => $result->{$_}" } sort keys %$result), "\n";
+}

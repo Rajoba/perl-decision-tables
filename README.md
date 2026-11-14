@@ -102,18 +102,18 @@ Regel Nr.5 (NYN---) <  Regel Nr. 7 (NY----)
 ## Running the table
 
 ```perl
+do './et_check.pl';                 # loads the code, does not run the example
+my $rt = example_table();
+
 my $cd = $rt->Code([qw(x y px1 py1 px2 py2 DBx DBy)],   # parameters
                    [qw(lfr DBx DBy)]);                  # results
-$cd->(100, 70, 20, 20, 300, 3000, 70, 100);
+my $r = $cd->(100, 70, 20, 20, 300, 3000, 70, 100);
+# $r = { lfr => 'BB', DBx => 100, DBy => 70 }
 ```
 
-This prints which conditions matched and which actions ran:
+The sub returns a hashref with the result variables. With `$rt->Code(..., ..., { verbose => 1 })` it also prints which conditions matched and which actions ran.
 
-```
-lfr == BB
-DBx == 100
-DBy == 70
-```
+Strictly speaking, `Code()` interprets the table rather than generating Perl source. Each call substitutes the parameters into the condition and action strings and `eval`s them. All matching rules fire, in table order.
 
 ## Limits
 
@@ -122,6 +122,7 @@ DBy == 70
 - Conditions and actions are strings evaluated with `eval`, so only use tables you trust.
 - Negating `x > y` gives `x < y`, not `x <= y`. The equality case has to be its own condition, as with `x == y` in the example.
 - Rule numbers in the report start at 2.
+- In `Code()`, the `else` actions run when at least one result variable is still undefined after all rules. This is not the same as "no rule matched". In the example it gives the same result, but it may not in other tables.
 
 ## Tests
 
@@ -132,6 +133,7 @@ prove t/
 - `t/example.t`: the example finds both missing rules, and the compiled sub returns `BB`.
 - `t/conflict.t`: an added contradicting rule is reported as an overlap.
 - `t/redundant.t`: a duplicate rule and a covered rule are detected.
+- `t/code.t`: the compiled sub returns the right result for every branch of the table, including the gap and `x == y`, and prints nothing by default.
 
 ## Glossary
 

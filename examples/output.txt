@@ -132,3 +132,5 @@ code >>>> $lidx{'lfr'} = "BB"
 DBx == 100
 DBy == 70
 lfr == BB
+
+Result: DBx => 100, DBy => 70, lfr => BB
