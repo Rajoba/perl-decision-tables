@@ -396,6 +396,14 @@ sub turnTable
 				my  $opt   = shift || {};
 				my  $say   = $opt->{verbose} ? sub { print @_ } : sub {};
 
+				# Variables the else actions assign to (e.g. 'lfr = "--"' -> lfr).
+				# The else branch runs when no rule assigned any of them.
+				# If the else actions assign nothing, it runs when no rule matched at all.
+				my  $assigns = sub { my $a = shift; $a =~ /^\s*(\w+)\s*=(?!=)/ ? $1 : undef };
+				my  %elseVar = map{ $_ => 1 } grep{ defined }
+				               map{ $assigns->($self->{Aktionen}->[$_]) }
+				               grep{ ($self->else->[$_] // '') eq '1' } (0..$#{$self->else});
+
 				# Returns a sub that takes the values of @$param (in that order)
 				# and returns a hashref with the final values of @$loc.
 				# With { verbose => 1 } it also prints a trace of matched rules.
@@ -403,6 +411,7 @@ sub turnTable
 					my %pidx = ();
 					my %lidx = ();
 					my $BA;
+					my $matched = 0;
 
 					$say->('code >>> my %pidx = ();'."\n");
 					$say->('code >>> my %lidx = ();'."\n");
@@ -423,6 +432,7 @@ sub turnTable
 						map{ $lidx{$_} = $_[$pidx{$_}] if !defined($lidx{$_}) && exists($lidx{$_}) } keys %pidx;
 
 						if($res){
+							++$matched if !%elseVar || grep{ my $v = $assigns->($_); defined $v && $elseVar{$v} } @{$BA->{'Akt'}};
 							$say->(join("\n", @{$rs->code->{'Bed'}})."\n");
 							foreach my $a (@{$BA->{'Akt'}}){  
 								map{ 
@@ -439,10 +449,10 @@ sub turnTable
 						}
 					};
 
-					my $notdef = scalar( grep{ ! defined($lidx{$_}) } keys %lidx );
+					# else: only when no rule set an else variable (see %elseVar)
 					foreach my $e (0..$#{$self->else}){
 						next if $self->else->[$e] ne '1';
-						if( $notdef > 0 ){
+						if( $matched == 0 ){
 							my $a = $self->{Aktionen}->[$e];
 							map{ 
 								$a =~ s/\b$_\b/\$lidx\{\'$_\'\}/g;

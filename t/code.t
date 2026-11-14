@@ -17,6 +17,9 @@ my @cases = (
     ['x<y, |dx|<|dy|: gap, else',        70, 100, 0, 0,  10, 500,  70, 100, { lfr => '--', DBx => 100, DBy =>  70 }],
     ['x==y: else',                       80,  80, 0, 0, 500,  10,  80,  80, { lfr => '--', DBx =>  80, DBy =>  80 }],
     ['DBx/DBy taken from x/y first',    100,  70, 0, 0, 500,  10,   1,   2, { lfr => 'SB', DBx =>  70, DBy => 100 }],
+    # rules 2/3 match here, but they don't set lfr, so else still runs
+    ['gap with DBx!=x: else',            70, 100, 0, 0,  10, 500,   1,   2, { lfr => '--', DBx => 100, DBy =>  70 }],
+    ['x==y with DBx!=x: else',           80,  80, 0, 0, 500,  10,   1,   2, { lfr => '--', DBx =>  80, DBy =>  80 }],
 );
 
 for my $c (@cases) {
@@ -33,5 +36,19 @@ for my $c (@cases) {
     is_deeply $got, $want, $name;
     is $out, '', "$name: no output without verbose";
 }
+
+# A second table: else assigns nothing, so it runs only when no rule matched.
+# (Built after the example tests: RegTable keeps the current table in globals.)
+my $t2 = RegTable->new({
+    Bedingungen => ['a > b'],
+    Aktionen    => ['r = "big"', '&::note(\\r)'],
+    sets        => [ [[qw(1)], [qw(1 -)]] ],
+    else        => [qw(- 1)],
+});
+our @notes;
+sub note { push @notes, 'else' }
+my $cd2 = $t2->Code([qw(a b)], [qw(r)]);
+@notes = (); is_deeply $cd2->(5, 1), { r => 'big' }, 'rule matched';   is scalar(@notes), 0, 'else not run';
+@notes = (); is_deeply $cd2->(1, 5), { r => undef }, 'no rule matched'; is scalar(@notes), 1, 'else run once';
 
 done_testing;

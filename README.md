@@ -122,7 +122,7 @@ Strictly speaking, `Code()` interprets the table rather than generating Perl sou
 - Conditions and actions are strings evaluated with `eval`, so only use tables you trust.
 - Negating `x > y` gives `x < y`, not `x <= y`. The equality case has to be its own condition, as with `x == y` in the example.
 - Rule numbers in the report start at 2.
-- In `Code()`, the `else` actions run when at least one result variable is still undefined after all rules. This is not the same as "no rule matched". In the example it gives the same result, but it may not in other tables.
+- In `Code()`, the `else` actions run when no matching rule assigned any of the variables the `else` actions assign. In the example, `else` sets `lfr`. Rules 2 and 3 only set `DBx`/`DBy`, so they don't prevent `else` from running. If the `else` actions assign nothing (only function calls), `else` runs when no rule matched at all.
 
 ## Tests
 
@@ -133,7 +133,7 @@ prove t/
 - `t/example.t`: the example finds both missing rules, and the compiled sub returns `BB`.
 - `t/conflict.t`: an added contradicting rule is reported as an overlap.
 - `t/redundant.t`: a duplicate rule and a covered rule are detected.
-- `t/code.t`: the compiled sub returns the right result for every branch of the table, including the gap and `x == y`, and prints nothing by default.
+- `t/code.t`: the compiled sub returns the right result for every branch of the table, including the gap and `x == y` (also when rules 2/3 fire at the same time), and prints nothing by default. A second small table checks that `else` runs only when no rule matched.
 
 ## Glossary
 
