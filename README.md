@@ -130,8 +130,6 @@ my $outer  = RegTable->new({
 });
 ```
 
-The gap check doesn't look inside the called table yet. It treats the call like any other action.
-
 A complete example is [`examples/fold.pl`](examples/fold.pl). An outer table decides how to handle a sheet that gets folded and calls the grain table for the grain direction. Printing and packaging want opposite things: printers want the grain parallel to the fold, packaging the other way round. A square cut has no long side, so the grain table returns `--` and the sheet goes to a human:
 
 ```
@@ -143,9 +141,60 @@ square cut                       ask a human
 gap NNNNYY (not square!)         ask a human
 ```
 
-The fold table's own report shows no missing rules. That's correct, but it misses something: `--` is supposed to mean "square cut" and nothing else. The last line isn't square, it falls through the gap `NNNNYY` in the grain table and gets `--` from `else`. It ends up with a human for the wrong reason, and the report can't tell the two cases apart.
+The fold table's own report shows no missing rules. That's correct, but it misses something: `--` is supposed to mean "square cut" and nothing else. The last line isn't square, it falls through the gap `NNNNYY` in the grain table and gets `--` from `else`. It ends up with a human for the wrong reason. The report of one table can't see that.
 
-Checking coverage across tables is an open problem, and there's a challenge for it on thecolony.ai: [Challenge: nested decision tables](https://thecolony.ai/post/42534524-9f49-5ac4-bd91-e3285d19bf97).
+### Coverage across tables
+
+`cross_report` checks a table together with the tables its conditions call. You tell it which condition calls which table, and for which return values the condition is true:
+
+```perl
+$fold->cross_report({
+    0 => {                                  # condition 1 of the fold table
+        name    => 'grain',
+        table   => $grainTable,
+        var     => 'lfr',
+        when    => sub { $_[0] eq '--' },   # condition is Y when lfr is "--"
+        only_if => { '--' => 'x == y' },    # "--" is only allowed for square cuts
+    },
+});
+```
+
+For the grain table as it is in the repo:
+
+```
+Bedingung 1: $::grain->(x, y, px1, py1, px2, py2, DBx, DBy)->{lfr} eq "--"
+  ruft grain auf, Ergebnis lfr:
+    lfr = "--"         -> Bedingung Y  aus: -NN--- Y-----
+    lfr = "BB"         -> Bedingung N  aus: -YN--- NNY---
+    lfr = "SB"         -> Bedingung N  aus: -YY---
+  ! lfr = "--" soll nur vorkommen, wenn 'x == y' gilt,
+    kommt aber auch hier vor: NNN---
+
+Alle Regeln sind erreichbar.
+```
+
+`NNN---` covers 21 combinations, not just the single gap `NNNNYY` from the grain table's own report. The others count as covered there because the helper rules `DBx = x` / `DBy = y` match, but neither of them sets `lfr`. So the cross-table check has to know which value each row *ends* with, not just which rows are gaps. That's what `$table->outcomes('lfr')` computes: for every possible row, all matching rules fire in order, then `else`, just like the compiled sub.
+
+With the missing rule restored and an explicit rule for square cuts, the warning goes away. If the grain table never returns `--`, the report says so:
+
+```
+  Bedingung 1 = Y ist NIE möglich
+
+Regel 2 (Y--) ist nicht erreichbar: Bedingung 1 = Y kommt nie vor
+```
+
+`examples/fold.pl` runs all three versions. At runtime, named tables report gaps with the path through the tables:
+
+```perl
+our $grain = $grainTable->Code(\@params, [qw(lfr DBx DBy)], { name => 'grain', on_gap => 'warn' });
+my  $cd    = $fold->Code([@params, qw(packaging parallel)], [qw(what)], { name => 'fold' });
+```
+
+```
+fold → grain: keine Regel für NNNNYY (x=1, y=2, px1=0, py1=0, px2=1, py2=1, DBx=1, DBy=2)
+```
+
+This came out of the [challenge on thecolony.ai](https://thecolony.ai/post/42534524-9f49-5ac4-bd91-e3285d19bf97), with good input from the comments there.
 
 ### Gaps at runtime
 
@@ -176,6 +225,7 @@ Strictly speaking, `Code()` interprets the table rather than generating Perl sou
 - Conditions and actions are strings evaluated with `eval`, so only use tables you trust.
 - The check for impossible combinations only understands single comparisons (`a == b`, `a < b`, ...) between terms that are written the same way. It doesn't know arithmetic, so `abs(a) >= 0` or `x + 1 > x` are just two unrelated terms to it.
 - Rule numbers in the report start at 2.
+- `cross_report` links are declared by hand: it doesn't parse the condition text to find the call. Two linked conditions are treated as independent, even if they call tables with the same inputs. `outcomes` only knows literal values (`lfr = "SB"`); a value computed from an expression shows up as `?`.
 - In `Code()`, the `else` actions run when no matching rule assigned any of the variables the `else` actions assign. In the example, `else` sets `lfr`. Rules 2 and 3 only set `DBx`/`DBy`, so they don't prevent `else` from running. If the `else` actions assign nothing (only function calls), `else` runs when no rule matched at all.
 
 ## Tests
@@ -188,7 +238,8 @@ prove t/
 - `t/conflict.t`: an added contradicting rule is reported as an overlap.
 - `t/redundant.t`: a duplicate rule and a covered rule are detected.
 - `t/code.t`: the compiled sub returns the right result for every branch of the table, including the gap and `x == y` (also when rules 2/3 fire at the same time), and prints nothing by default. A second small table checks that `else` runs only when no rule matched.
-- `t/fold.t`: the nested printing/packaging example gives the right decision for each case, including a square cut and a gap in the grain table that wrongly returns `--`.
+- `t/fold.t`: the nested printing/packaging example gives the right decision for each case, including a square cut and a gap in the grain table that wrongly returns `--`; the cross-table check for all three grain table versions; the runtime path `fold → grain`.
+- `t/cross.t`: `outcomes`, merging rows, and the return value of `cross_report`.
 - `t/two_tables.t`: several tables at once and a table calling another one, with the results and reports of each table unaffected.
 - `t/on_gap.t`: silent by default, `warn`, `die` and a handler, with the pattern and input values in the message.
 - `t/negation.t`: exact negation (`>` → `<=`, `<` → `>=`, ...), contradictions across variables, and the boundary `|dx| == |dy|`, both in the report and in the compiled sub.

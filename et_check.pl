@@ -70,6 +70,48 @@ sub turnTable
 my %compl = ('==' => '!=', '!=' => '==', '<' => '>=', '>=' => '<', '>' => '<=', '<=' => '>');
 my $cmpop = qr/ (==|!=|<=|>=|<|>) /;
 
+# Merge Y/N rows (strings like 'NNNNYY') into fewer rows with '-',
+# e.g. NNNNYY + NNNYYY -> NNN-YY. Rows in %$dontcare (impossible ones)
+# may be absorbed into a '-'. Returns a sorted list of rows.
+sub mergeRows
+{
+	my ($want, $dontcare) = @_;
+	my %ok = map{ $_ => 1 } (@$want, keys %{$dontcare || {}});
+	my %cur = map{ $_ => 1 } @$want;
+	my $expand; $expand = sub { my $r = shift; my $i = index($r, '-'); return ($r) if $i < 0;
+		return map{ my $t = $r; substr($t, $i, 1) = $_; $expand->($t) } qw(Y N) };
+	my $changed = 1;
+	while($changed){
+		$changed = 0;
+		my @rows = sort keys %cur;
+		ROW: foreach my $a (@rows){
+			next if !$cur{$a};
+			for my $i (0..length($a)-1){
+				my $c = substr($a, $i, 1);
+				next if $c eq '-';
+				my $b = $a; substr($b, $i, 1) = $c eq 'Y' ? 'N' : 'Y';
+				my $m = $a; substr($m, $i, 1) = '-';
+				next if grep{ !$ok{$_} } $expand->($m);     # merged row must not add real cases
+				delete $cur{$a}; delete $cur{$b}; $cur{$m} = 1; $changed = 1;
+				next ROW;
+			}
+		}
+	}
+	# pick rows greedily: always the one covering the most open cases
+	my %need = map{ $_ => 1 } @$want;
+	my %hits = map{ my $r = $_; $r => [ grep{ $need{$_} } $expand->($r) ] } keys %cur;
+	my @keep = ();
+	while(%need){
+		my ($best) = sort{ (grep{ $need{$_} } @{$hits{$b}}) <=> (grep{ $need{$_} } @{$hits{$a}}) || $a cmp $b } keys %hits;
+		my @h = grep{ $need{$_} } @{$hits{$best}};
+		last if !@h;
+		delete @need{@h};
+		push(@keep, $best);
+		delete $hits{$best};
+	}
+	return sort @keep;
+}	# ----------  end of subroutine mergeRows  ----------
+
 # ($left, $op, $right) if $cond is a single comparison "a OP b", else ().
 sub simpleCmp
 {
@@ -457,6 +499,7 @@ sub contradicts
 				die "on_gap must be 'warn', 'die' or a code ref\n"
 					if defined $onGap && !ref($onGap) && $onGap ne 'warn' && $onGap ne 'die';
 				my  $say   = $opt->{verbose} ? sub { print @_ } : sub {};
+				my  $name  = $opt->{name};
 
 				# Variables the else actions assign to (e.g. 'lfr = "--"' -> lfr).
 				# The else branch runs when no rule assigned any of them.
@@ -472,6 +515,9 @@ sub contradicts
 				return sub { 
 					local $RegSet::Bed = $self->Bedingungen;
 					local $RegSet::Akt = $self->Aktionen;
+					# path of named tables for messages: fold → grain
+					local @RegTable::PATH = defined $name ? (@RegTable::PATH, $name) : @RegTable::PATH;
+					my %val  = ();     # condition index -> 1/0, each evaluated once per call
 					my %pidx = ();
 					my %lidx = ();
 					my $BA;
@@ -487,11 +533,16 @@ sub contradicts
 					foreach my $rs (@{$self->Rsets}){ 
 						$BA = $rs->code;
 						my $res = 1;
-						foreach my $b (@{$BA->{'Bed'}}){  
-							map{ 
-								$b =~ s/\b$_\b/\$\_\[$pidx{$_}\]/g;
-							} @$param;
-							$res &&= eval($b);
+						foreach my $i (0..$#{$rs->set}){
+							my $want = $rs->set->[$i];
+							next if !defined $want;
+							if(!exists $val{$i}){
+								my $b = $self->Bedingungen->[$i];
+								$b =~ s/\# //;
+								map{ $b =~ s/\b$_\b/\$\_\[$pidx{$_}\]/g } @$param;
+								$val{$i} = eval($b) ? 1 : 0;
+							}
+							if($val{$i} != $want){ $res = 0; last }
 						}
 						map{ $lidx{$_} = $_[$pidx{$_}] if !defined($lidx{$_}) && exists($lidx{$_}) } keys %pidx;
 
@@ -517,14 +568,16 @@ sub contradicts
 					# Y/N combination of the conditions the input has.
 					if( $matched == 0 && defined $onGap ){
 						my @args    = @_;
-						my $pattern = join('', map{
-							my $b = $_;
+						foreach my $i (grep{ !exists $val{$_} } 0..$#{$self->Bedingungen}){
+							my $b = $self->Bedingungen->[$i];
 							$b =~ s/\# //;
-							map{ $b =~ s/\b$_\b/\$args\[$pidx{$_}\]/g } @$param;
-							eval($b) ? 'Y' : 'N';
-						} @{$self->Bedingungen});
+							map{ $b =~ s/\b$_\b/\$\_\[$pidx{$_}\]/g } @$param;
+							$val{$i} = eval($b) ? 1 : 0;
+						}
+						my $pattern = join('', map{ $val{$_} ? 'Y' : 'N' } 0..$#{$self->Bedingungen});
 						my $vals = join(', ', map{ "$_=".($args[$pidx{$_}] // 'undef') } @$param);
-						my $msg  = "keine Regel für $pattern ($vals)\n";
+						my $where = @RegTable::PATH ? join(' → ', @RegTable::PATH).': ' : '';
+						my $msg  = "${where}keine Regel für $pattern ($vals)\n";
 						if   (ref $onGap)      { $onGap->($pattern, { map{ $_ => $args[$pidx{$_}] } @$param }) }
 						elsif($onGap eq 'die') { die $msg }
 						else                   { warn $msg }
@@ -548,6 +601,120 @@ sub contradicts
 					return { %lidx };
 				}
 			}	# ----------  end of subroutine Code  ----------
+			# For every possible Y/N row of this table: which value does $var
+			# end up with? All matching rules fire in table order, then else
+			# (when no rule set an else variable), like Code() does.
+			# Returns { value => [rows] }; '?' = set from an expression,
+			# '(nicht gesetzt)' = never set. Impossible rows are skipped.
+			sub outcomes
+			{
+				my	$self	= shift;
+				my	$var	= shift;
+				my  $bed   = $self->Bedingungen;
+				my  $akt   = $self->Aktionen;
+				my  $assigns = sub { my $a = shift; $a =~ /^\s*(\w+)\s*=(?!=)\s*(.*?)\s*;?\s*$/ ? ($1, $2) : () };
+				my  $value   = sub { my $e = shift; return $e =~ /^"([^"]*)"$/ || $e =~ /^'([^']*)'$/ || $e =~ /^(-?\d+(?:\.\d+)?)$/ ? $1 : '?' };
+				my  %elseVar = map{ ($assigns->($akt->[$_]))[0] => 1 } grep{ ($self->else->[$_] // '') eq '1' && $assigns->($akt->[$_]) } (0..$#$akt);
+				my  %out = ();
+
+				foreach my $row (@{ ::turnTable(::complTbl(scalar @$bed)) }){
+					next if ::contradicts(map{ ::bedText($bed->[$_], $row->[$_]) } 0..$#$bed);
+					my $got;
+					my $decided = 0;
+					my $any     = 0;
+					foreach my $rs (@{$self->Rsets}){
+						next if grep{ defined $rs->set->[$_] && $rs->set->[$_] != $row->[$_] } 0..$#$bed;
+						$any = 1;
+						foreach my $j (grep{ ($rs->akt->[$_] // '') =~ /\d/ } 0..$#$akt){
+							my ($v, $e) = $assigns->($akt->[$j]);
+							next if !defined $v;
+							$decided = 1 if $elseVar{$v};
+							$got = $value->($e) if $v eq $var;
+						}
+					}
+					if( %elseVar ? !$decided : !$any ){
+						foreach my $j (grep{ ($self->else->[$_] // '') eq '1' } 0..$#$akt){
+							my ($v, $e) = $assigns->($akt->[$j]);
+							$got = $value->($e) if defined $v && $v eq $var;
+						}
+					}
+					push(@{$out{ $got // '(nicht gesetzt)' }}, join('', map{ $_ ? 'Y' : 'N' } @$row));
+				}
+				return \%out;
+			}	# ----------  end of subroutine outcomes  ----------
+
+			# Rows that can't happen in this table, as { 'NNY...' => 1 }.
+			sub impossibleRows
+			{
+				my	$self	= shift;
+				my  $bed   = $self->Bedingungen;
+				return { map{ join('', map{ $_ ? 'Y' : 'N' } @$_) => 1 }
+				         grep{ my $r = $_; ::contradicts(map{ ::bedText($bed->[$_], $r->[$_]) } 0..$#$bed) }
+				         @{ ::turnTable(::complTbl(scalar @$bed)) } };
+			}	# ----------  end of subroutine impossibleRows  ----------
+
+			# Coverage across tables. %$links maps a condition index of this
+			# table to the table it calls:
+			#   0 => { name => 'grain', table => $grainTable, var => 'lfr',
+			#          when => sub { $_[0] eq '--' },          # condition is Y for these values
+			#          only_if => { '--' => 'x == y' } }       # optional: value allowed only
+			#                                                  # where that inner condition is Y
+			# Prints which inner rows lead to Y and N, warns about values that
+			# come from rows they shouldn't, and lists rules of this table that
+			# can't be reached. Returns { unreachable => [rule numbers], violations => n }.
+			sub cross_report
+			{
+				my	$self	= shift;
+				my	$links	= shift;
+				my  %can   = ();     # condition index -> { 1 => bool, 0 => bool }
+				my  $viol  = 0;
+
+				print "Prüfung über Tabellengrenzen\n";
+				print '=' x 65 . "\n";
+				foreach my $i (sort{ $a <=> $b } keys %$links){
+					my $l   = $links->{$i};
+					my $in  = $l->{table};
+					my $out = $in->outcomes($l->{var});
+					my $imp = $in->impossibleRows;
+					my $nm  = $l->{name} // 'Tabelle';
+					my %rows = (1 => [], 0 => []);
+
+					print "Bedingung ".($i+1).": $self->{Bedingungen}->[$i]\n";
+					print "  ruft $nm auf, Ergebnis $l->{var}:\n";
+					foreach my $v (sort keys %$out){
+						my $yn = $l->{when}->($v) ? 1 : 0;
+						push(@{$rows{$yn}}, @{$out->{$v}});
+						printf "    %-18s -> Bedingung %s  aus: %s\n", "$l->{var} = \"$v\"", ($yn ? 'Y' : 'N'),
+							join(' ', ::mergeRows($out->{$v}, $imp));
+					}
+					$can{$i} = { 1 => scalar(@{$rows{1}}) > 0, 0 => scalar(@{$rows{0}}) > 0 };
+					foreach my $yn (1, 0){
+						print "  Bedingung ".($i+1)." = ".($yn ? 'Y' : 'N')." ist NIE möglich\n" if !$can{$i}{$yn};
+					}
+					foreach my $v (sort keys %{$l->{only_if} || {}}){
+						my $cond = $l->{only_if}{$v};
+						my ($ci) = grep{ $in->Bedingungen->[$_] eq $cond } 0..$#{$in->Bedingungen};
+						die "only_if: '$cond' ist keine Bedingung von $nm\n" if !defined $ci;
+						my @bad = grep{ substr($_, $ci, 1) eq 'N' } @{$out->{$v} || []};
+						next if !@bad;
+						++$viol;
+						print "  ! $l->{var} = \"$v\" soll nur vorkommen, wenn '$cond' gilt,\n";
+						print "    kommt aber auch hier vor: ".join(' ', ::mergeRows(\@bad, $imp))."\n";
+					}
+					print "\n";
+				}
+
+				my @dead = ();
+				foreach my $rs (@{$self->Rsets}){
+					my @why = grep{ defined $rs->set->[$_] && $can{$_} && !$can{$_}{ $rs->set->[$_] } } keys %can;
+					next if !@why;
+					push(@dead, $rs->Nr);
+					print "Regel ".$rs->Nr." ($rs) ist nicht erreichbar: Bedingung "
+					    .join(', ', map{ ($_+1).' = '.($rs->set->[$_] ? 'Y' : 'N') } sort @why)." kommt nie vor\n";
+				}
+				print "Alle Regeln sind erreichbar.\n" if !@dead;
+				return { unreachable => \@dead, violations => $viol };
+			}	# ----------  end of subroutine cross_report  ----------
 		}	# ----------  end of package RegTable  ----------
 
 # RegSet::setBed(['wenn PK', 'wenn zu schn.', 'wenn betr.']);
