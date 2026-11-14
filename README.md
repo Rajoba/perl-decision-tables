@@ -116,6 +116,26 @@ my $r = $cd->(100, 70, 20, 20, 300, 3000, 70, 100);
 
 The sub returns a hashref with the result variables. With `$rt->Code(..., ..., { verbose => 1 })` it also prints which conditions matched and which actions ran.
 
+### Gaps at runtime
+
+The report finds missing rules before you run anything. Without extra options, an input that falls into a gap at runtime just runs `else`, silently. With `on_gap` it makes itself known:
+
+```perl
+my $cd = $rt->Code(\@params, \@results, { on_gap => 'warn' });   # warn, then run else
+my $cd = $rt->Code(\@params, \@results, { on_gap => 'die'  });   # die instead
+my $cd = $rt->Code(\@params, \@results, { on_gap => sub {      # your own handler, then else
+    my ($pattern, $values) = @_;   # 'NNNNYY', { x => 1, y => 2, ... }
+}});
+```
+
+```
+keine Regel für NNNNYY (x=1, y=2, px1=0, py1=0, px2=1, py2=1, DBx=1, DBy=2)
+```
+
+The pattern is the Y/N combination of the conditions for this input, the same notation as in the report. `on_gap` fires exactly when `else` would run, that is, when no rule set an `else` variable (see Limits). So it also fires for inputs where only rules 2/3 matched (e.g. `NNNNNN`): those rows are covered in the report, but nothing in them decides `lfr`.
+
+To check the table itself without running it, use `$rt->Fehlende_Regeln`. It returns the missing rows as arrays of 1/0.
+
 Strictly speaking, `Code()` interprets the table rather than generating Perl source. Each call substitutes the parameters into the condition and action strings and `eval`s them. All matching rules fire, in table order.
 
 ## Limits
@@ -137,6 +157,7 @@ prove t/
 - `t/conflict.t`: an added contradicting rule is reported as an overlap.
 - `t/redundant.t`: a duplicate rule and a covered rule are detected.
 - `t/code.t`: the compiled sub returns the right result for every branch of the table, including the gap and `x == y` (also when rules 2/3 fire at the same time), and prints nothing by default. A second small table checks that `else` runs only when no rule matched.
+- `t/on_gap.t`: silent by default, `warn`, `die` and a handler, with the pattern and input values in the message.
 - `t/negation.t`: exact negation (`>` → `<=`, `<` → `>=`, ...), contradictions across variables, and the boundary `|dx| == |dy|`, both in the report and in the compiled sub.
 
 ## Glossary

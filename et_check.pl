@@ -440,6 +440,9 @@ sub contradicts
 				my  $param = shift;
 				my  $loc   = shift;
 				my  $opt   = shift || {};
+				my  $onGap = $opt->{on_gap};
+				die "on_gap must be 'warn', 'die' or a code ref\n"
+					if defined $onGap && !ref($onGap) && $onGap ne 'warn' && $onGap ne 'die';
 				my  $say   = $opt->{verbose} ? sub { print @_ } : sub {};
 
 				# Variables the else actions assign to (e.g. 'lfr = "--"' -> lfr).
@@ -494,6 +497,23 @@ sub contradicts
 							# last;
 						}
 					};
+
+					# on_gap: no rule decided (else is about to run). Report which
+					# Y/N combination of the conditions the input has.
+					if( $matched == 0 && defined $onGap ){
+						my @args    = @_;
+						my $pattern = join('', map{
+							my $b = $_;
+							$b =~ s/\# //;
+							map{ $b =~ s/\b$_\b/\$args\[$pidx{$_}\]/g } @$param;
+							eval($b) ? 'Y' : 'N';
+						} @{$self->Bedingungen});
+						my $vals = join(', ', map{ "$_=".($args[$pidx{$_}] // 'undef') } @$param);
+						my $msg  = "keine Regel für $pattern ($vals)\n";
+						if   (ref $onGap)      { $onGap->($pattern, { map{ $_ => $args[$pidx{$_}] } @$param }) }
+						elsif($onGap eq 'die') { die $msg }
+						else                   { warn $msg }
+					}
 
 					# else: only when no rule set an else variable (see %elseVar)
 					foreach my $e (0..$#{$self->else}){
