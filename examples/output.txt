@@ -1,0 +1,134 @@
+-----
+Regel Nr.: 2 ----N-
+DBx != x
+-------------
+DBx = x
+
+Regel Nr.: 3 -----N
+DBy != y
+-------------
+DBy = y
+
+Regel Nr.: 4 NYY---
+x != y
+x > y
+abs(px2 - px1) > abs(py2 - py1)
+-------------
+lfr = "SB"
+&::swap(\DBx, \DBy)
+
+Regel Nr.: 5 NYN---
+x != y
+x > y
+abs(px2 - px1) < abs(py2 - py1)
+-------------
+lfr = "BB"
+
+Regel Nr.: 6 NNY---
+x != y
+x < y
+abs(px2 - px1) > abs(py2 - py1)
+-------------
+lfr = "BB"
+&::swap(\DBx, \DBy)
+
+XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+sonst: lfr = "--"
+sonst: &::swap(\DBx, \DBy)
+XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+
+Fehlende Regeln:
+--------------------------------------------------
+Regel Nr.: 7 NNNYYY
+x != y
+x < y
+abs(px2 - px1) < abs(py2 - py1)
+DBx > DBy
+DBx == x
+DBy == y
+-------------
+lfr = "--"
+&::swap(\DBx, \DBy)
+
+Regel Nr.: 8 NNNNYY
+x != y
+x < y
+abs(px2 - px1) < abs(py2 - py1)
+DBx < DBy
+DBx == x
+DBy == y
+-------------
+lfr = "--"
+&::swap(\DBx, \DBy)
+
+-----------------------------------------------------------------
+Regel 2 (----N-) und 3 (-----N) überkreuzen sich in 8 Fällen:
+    NNNNNN
+    NNNYNN
+    NNYNNN
+    NNYYNN
+    NYNNNN
+    NYNYNN
+    NYYNNN
+    NYYYNN
+
+-----------------------------------------------------------------
+Regel 2 (----N-) und 4 (NYY---) überkreuzen sich in 4 Fällen:
+    NYYNNN
+    NYYNNY
+    NYYYNN
+    NYYYNY
+
+-----------------------------------------------------------------
+Regel 2 (----N-) und 5 (NYN---) überkreuzen sich in 4 Fällen:
+    NYNNNN
+    NYNNNY
+    NYNYNN
+    NYNYNY
+
+-----------------------------------------------------------------
+Regel 2 (----N-) und 6 (NNY---) überkreuzen sich in 4 Fällen:
+    NNYNNN
+    NNYNNY
+    NNYYNN
+    NNYYNY
+
+-----------------------------------------------------------------
+Regel 3 (-----N) und 4 (NYY---) überkreuzen sich in 4 Fällen:
+    NYYNNN
+    NYYNYN
+    NYYYNN
+    NYYYYN
+
+-----------------------------------------------------------------
+Regel 3 (-----N) und 5 (NYN---) überkreuzen sich in 4 Fällen:
+    NYNNNN
+    NYNNYN
+    NYNYNN
+    NYNYYN
+
+-----------------------------------------------------------------
+Regel 3 (-----N) und 6 (NNY---) überkreuzen sich in 4 Fällen:
+    NNYNNN
+    NNYNYN
+    NNYYNN
+    NNYYYN
+
+
+code >>> my %pidx = ();
+code >>> my %lidx = ();
+code >>> my $BA;
+DBx != x
+code >>>> $lidx{'DBx'} = $_[0]
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+DBy != y
+code >>>> $lidx{'DBy'} = $_[1]
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+x != y
+x > y
+abs(px2 - px1) < abs(py2 - py1)
+code >>>> $lidx{'lfr'} = "BB"
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+DBx == 100
+DBy == 70
+lfr == BB
