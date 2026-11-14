@@ -41,12 +41,12 @@ for my $c (@cases) {
 # (Built after the example tests: RegTable keeps the current table in globals.)
 my $t2 = RegTable->new({
     Bedingungen => ['a > b'],
-    Aktionen    => ['r = "big"', '&::note(\\r)'],
+    Aktionen    => ['r = "big"', '&::else_hit(\\r)'],
     sets        => [ [[qw(1)], [qw(1 -)]] ],
     else        => [qw(- 1)],
 });
 our @notes;
-sub note { push @notes, 'else' }
+sub else_hit { push @notes, 'else' }
 my $cd2 = $t2->Code([qw(a b)], [qw(r)]);
 @notes = (); is_deeply $cd2->(5, 1), { r => 'big' }, 'rule matched';   is scalar(@notes), 0, 'else not run';
 @notes = (); is_deeply $cd2->(1, 5), { r => undef }, 'no rule matched'; is scalar(@notes), 1, 'else run once';
