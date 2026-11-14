@@ -133,7 +133,7 @@ Strictly speaking, `Code()` interprets the table rather than generating Perl sou
 prove t/
 ```
 
-- `t/example.t`: the example finds both missing rules, and the compiled sub returns `BB`.
+- `t/example.t`: the example finds the three missing rules, skips the impossible ones, and the compiled sub returns `BB`.
 - `t/conflict.t`: an added contradicting rule is reported as an overlap.
 - `t/redundant.t`: a duplicate rule and a covered rule are detected.
 - `t/code.t`: the compiled sub returns the right result for every branch of the table, including the gap and `x == y` (also when rules 2/3 fire at the same time), and prints nothing by default. A second small table checks that `else` runs only when no rule matched.
