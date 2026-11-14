@@ -173,6 +173,13 @@ sub contradicts
 		my($params) = @_;
 		my($self)   = $class->SUPER::new($params);
 
+		# The table's conditions/actions are passed in dynamically (local) by
+		# RegTable; each rule set keeps its own reference, so several tables
+		# can exist at the same time.
+		$self->{_bed} = $Bed;
+		$self->{_akt} = $Akt;
+		local ($Bed, $Akt) = ($self->{_bed}, $self->{_akt});
+
 		$self->{Nr} = ++$RegAnz if ! defined($self->Nr);
 		map{ $self->{set}->[$_] = undef if $self->set->[$_] eq '-' } (0..$#{$self->set});
 			$self->{undef} = scalar(@{$self->set}) - scalar(grep{ defined } @{$self->set} );
@@ -281,6 +288,7 @@ sub contradicts
 			sub kreuzValues
 			{
 				my	$self  = shift;
+				local ($Bed, $Akt) = ($self->{_bed}, $self->{_akt});
 				my  $other = shift;
 				my %count  = ();
 				my $cmp1   = defined($self->complements) ? $self->complements : [$self->set];
@@ -297,6 +305,7 @@ sub contradicts
 			sub report
 			{
 				my	$self	= shift;
+				local ($Bed, $Akt) = ($self->{_bed}, $self->{_akt});
 				my $bd = '';
 
 				print "IRRELEVANT\n" if $self->irrelevant;
@@ -319,6 +328,7 @@ sub contradicts
 			sub code
 			{
 				my	$self	= shift;
+				local ($Bed, $Akt) = ($self->{_bed}, $self->{_akt});
 				my @bdary = ();
 				my @akary = ();
 				my %ba    = ();
@@ -356,8 +366,9 @@ sub contradicts
 				my($self)   = $class->SUPER::new($params);
 				my %seen    = ();
 
-				$RegSet::Bed = \@{$self->Bedingungen};
-				$RegSet::Akt = \@{$self->Aktionen};
+				local $RegSet::Bed    = \@{$self->Bedingungen};
+				local $RegSet::Akt    = \@{$self->Aktionen};
+				local $RegSet::RegAnz = 1;     # rule numbers start fresh per table
 
 				map{ push(@{$self->{Rsets}}, RegSet->new({set => $_->[0] , akt => $_->[1]})) } @{$self->sets};
 				# print Dumper($self->{Rsets})."\n";
@@ -379,14 +390,16 @@ sub contradicts
 					push(@{$self->{Fehlende_Regeln}}, [@$_] ) if ! RegSet->new({set => $_, akt => $self->Rsets->[0]->akt, Nr => 0})->irrelevant ;
 				} grep{ !$seen{join('', @$_)} } @{ ::turnTable(::complTbl(scalar(@{$self->Rsets->[0]->set}))) };
 
-				# print Dumper($self->Rsets)."\n";
-				# die "Ok...\n";
+				$self->{_regAnz} = $RegSet::RegAnz;
 
 				return(bless($self, $class));
 			}
 			sub report
 			{
 				my	$self	= shift;
+				local $RegSet::Bed    = $self->Bedingungen;
+				local $RegSet::Akt    = $self->Aktionen;
+				local $RegSet::RegAnz = $self->{_regAnz};
 
 				map{ $_->report } @{$self->Rsets};
 				# print '#' x 65  . "\n";
@@ -457,6 +470,8 @@ sub contradicts
 				# and returns a hashref with the final values of @$loc.
 				# With { verbose => 1 } it also prints a trace of matched rules.
 				return sub { 
+					local $RegSet::Bed = $self->Bedingungen;
+					local $RegSet::Akt = $self->Aktionen;
 					my %pidx = ();
 					my %lidx = ();
 					my $BA;

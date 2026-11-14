@@ -116,6 +116,22 @@ my $r = $cd->(100, 70, 20, 20, 300, 3000, 70, 100);
 
 The sub returns a hashref with the result variables. With `$rt->Code(..., ..., { verbose => 1 })` it also prints which conditions matched and which actions ran.
 
+### Several tables, and tables calling tables
+
+Each table keeps its own conditions, actions and rule numbers, so you can create as many as you like. An action can call another table's compiled sub, which gives you simple nesting:
+
+```perl
+our $inner = $small_table->Code([qw(a b)], [qw(r)]);
+my $outer  = RegTable->new({
+    Bedingungen => ['n > 0'],
+    Aktionen    => ['out = $::inner->(n, 3)->{r}'],
+    sets        => [ [[qw(1)], [qw(1)]] ],
+    else        => [qw(-)],
+});
+```
+
+The gap check doesn't look inside the called table yet. It treats the call like any other action.
+
 ### Gaps at runtime
 
 The report finds missing rules before you run anything. Without extra options, an input that falls into a gap at runtime just runs `else`, silently. With `on_gap` it makes itself known:
@@ -157,6 +173,7 @@ prove t/
 - `t/conflict.t`: an added contradicting rule is reported as an overlap.
 - `t/redundant.t`: a duplicate rule and a covered rule are detected.
 - `t/code.t`: the compiled sub returns the right result for every branch of the table, including the gap and `x == y` (also when rules 2/3 fire at the same time), and prints nothing by default. A second small table checks that `else` runs only when no rule matched.
+- `t/two_tables.t`: several tables at once and a table calling another one, with the results and reports of each table unaffected.
 - `t/on_gap.t`: silent by default, `warn`, `die` and a handler, with the pattern and input values in the message.
 - `t/negation.t`: exact negation (`>` → `<=`, `<` → `>=`, ...), contradictions across variables, and the boundary `|dx| == |dy|`, both in the report and in the compiled sub.
 
