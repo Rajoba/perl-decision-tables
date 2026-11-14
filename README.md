@@ -132,6 +132,18 @@ my $outer  = RegTable->new({
 
 The gap check doesn't look inside the called table yet. It treats the call like any other action.
 
+A complete example is [`examples/fold.pl`](examples/fold.pl). An outer table decides how to handle a sheet that gets folded and calls the grain table for the grain direction. Printing and packaging want opposite things: printers want the grain parallel to the fold, packaging the other way round. When the grain table can't decide (`--`), the sheet goes to a human:
+
+```
+printing,  parallel              fold
+printing,  across                rotate sheet 90°
+packaging, parallel              rotate sheet 90°
+packaging, across                fold
+grain table gap (NNNNYY)         ask a human
+```
+
+The fold table's own report shows no missing rules. That's correct, but the report can't tell that the "ask a human" rule is only reachable because the grain table has gaps.
+
 ### Gaps at runtime
 
 The report finds missing rules before you run anything. Without extra options, an input that falls into a gap at runtime just runs `else`, silently. With `on_gap` it makes itself known:
@@ -173,6 +185,7 @@ prove t/
 - `t/conflict.t`: an added contradicting rule is reported as an overlap.
 - `t/redundant.t`: a duplicate rule and a covered rule are detected.
 - `t/code.t`: the compiled sub returns the right result for every branch of the table, including the gap and `x == y` (also when rules 2/3 fire at the same time), and prints nothing by default. A second small table checks that `else` runs only when no rule matched.
+- `t/fold.t`: the nested printing/packaging example gives the right decision for each case, including a gap in the grain table.
 - `t/two_tables.t`: several tables at once and a table calling another one, with the results and reports of each table unaffected.
 - `t/on_gap.t`: silent by default, `warn`, `die` and a handler, with the pattern and input values in the message.
 - `t/negation.t`: exact negation (`>` → `<=`, `<` → `>=`, ...), contradictions across variables, and the boundary `|dx| == |dy|`, both in the report and in the compiled sub.
