@@ -62,6 +62,92 @@ sub turnTable
 	return \@nt;
 }	# ----------  end of subroutine turnTable  ----------
 
+# Text of condition $cond for answer $yes (1 = Y, 0 = N).
+# '#' marks where "nicht" goes in text conditions ('wenn # PK').
+# A comparison "a OP b" with exactly one operator is negated with the exact
+# complement (> becomes <=, < becomes >=, == becomes !=, ...), so that
+# N on 'a > b' really means a <= b. Anything else is negated as !(cond).
+my %compl = ('==' => '!=', '!=' => '==', '<' => '>=', '>=' => '<', '>' => '<=', '<=' => '>');
+my $cmpop = qr/ (==|!=|<=|>=|<|>) /;
+
+# ($left, $op, $right) if $cond is a single comparison "a OP b", else ().
+sub simpleCmp
+{
+	my $cond = shift;
+	my @ops  = $cond =~ /$cmpop/g;
+	return () if @ops != 1 || $cond =~ /&&|\|\||\b(?:and|or|not|xor)\b|!(?!=)|\?|,/;
+	my ($l, $op, $r) = $cond =~ /^\s*(.*?)\s*$cmpop\s*(.*?)\s*$/;
+	return () if !defined $r || $l eq '' || $r eq '';
+	return ($l, $op, $r);
+}	# ----------  end of subroutine simpleCmp  ----------
+sub bedText
+{
+	my ($cond, $yes) = @_;
+
+	if($cond =~ /\# /){
+		$cond =~ s/\# /$yes ? '' : 'nicht '/e;
+		return $cond;
+	}
+	return $cond if $yes;
+
+	my ($l, $op, $r) = simpleCmp($cond);
+	return defined $op ? "$l $compl{$op} $r" : "!($cond)";
+}	# ----------  end of subroutine bedText  ----------
+
+# True if the comparisons in @conds can't all hold at the same time.
+# Each "a OP b" (one operator) relates two terms; other conditions are ignored.
+# Terms joined by == are merged; then a cycle through a strict < / >,
+# or a != / < inside one merged group, is a contradiction.
+# Example: DBx == x, DBy == y, x < y, DBx > DBy.
+sub contradicts
+{
+	my @rel = ();
+	my %parent = ();
+	my $find; $find = sub { my $t = shift; $parent{$t} //= $t; return $parent{$t} eq $t ? $t : ($parent{$t} = $find->($parent{$t})) };
+
+	foreach my $c (@_){
+		my ($l, $op, $r) = simpleCmp($c);
+		next if !defined $op;
+		($l, $op, $r) = ($r, $op eq '>' ? '<' : '<=', $l) if $op eq '>' || $op eq '>=';
+		push(@rel, [$l, $op, $r]);
+		$find->($l); $find->($r);
+	}
+	# merge equal terms (also a <= b together with b <= a)
+	my $changed = 1;
+	while($changed){
+		$changed = 0;
+		foreach my $e (grep{ $_->[1] eq '==' } @rel){
+			my ($a, $b) = ($find->($e->[0]), $find->($e->[2]));
+			if($a ne $b){ $parent{$a} = $b; $changed = 1 }
+		}
+		my %le = map{ $find->($_->[0]).' '.$find->($_->[2]) => 1 } grep{ $_->[1] eq '<=' } @rel;
+		foreach my $k (keys %le){
+			my ($a, $b) = split / /, $k, 2;
+			next if $a eq $b || !$le{"$b $a"};
+			$parent{$a} = $b; $changed = 1; last;
+		}
+	}
+	# != or < inside one group
+	foreach my $e (@rel){
+		my ($a, $b) = ($find->($e->[0]), $find->($e->[2]));
+		return 1 if $a eq $b && ($e->[1] eq '!=' || $e->[1] eq '<');
+	}
+	# order graph between groups: dist 1 = strictly less, 0 = less or equal
+	my %d = ();
+	foreach my $e (grep{ $_->[1] eq '<' || $_->[1] eq '<=' } @rel){
+		my ($a, $b) = ($find->($e->[0]), $find->($e->[2]));
+		my $w = $e->[1] eq '<' ? 1 : 0;
+		$d{$a}{$b} = $w if !exists $d{$a}{$b} || $w > $d{$a}{$b};
+	}
+	my @n = keys %{{ map{ $find->($_) => 1 } keys %parent }};
+	foreach my $k (@n){ foreach my $i (@n){ next if !exists $d{$i}{$k};
+		foreach my $j (@n){ next if !exists $d{$k}{$j};
+			my $w = $d{$i}{$k} || $d{$k}{$j} ? 1 : 0;
+			$d{$i}{$j} = $w if !exists $d{$i}{$j} || $w > $d{$i}{$j};
+	} } }
+	return scalar grep{ ($d{$_}{$_} // 0) == 1 } @n;
+}	# ----------  end of subroutine contradicts  ----------
+
 {
 	package RegSet;
 
@@ -107,44 +193,11 @@ sub turnTable
 					}
 				}		
 
-				my %li = ();
 				for(my $i=0; $i <= $#$Bed; $i++ ){
-					if(defined($self->{set}->[$i])){
-						$self->{rsBed}->[$i] = $Bed->[$i];
-
-						$self->{set}->[$i] ? $self->{rsBed}->[$i] =~ s/\# // : $self->{rsBed}->[$i] =~ s/\# /nicht /;
-						if(!$self->{set}->[$i]){
-							$self->{rsBed}->[$i] =~ s/ \< / \> /g;
-							$self->{rsBed}->[$i] =~ s/ \> / \< /g;
-							$self->{rsBed}->[$i] =~ s/ \=\= / \!\= /g;
-						}
-						if($self->{rsBed}->[$i] =~ /\<|\>|\=\=|\!\=/ ){
-							my $tmp = $self->{rsBed}->[$i];
-
-							$tmp =~ s/ \< | \> | \=\= | \!\= / /g;
-							push(@{$li{$tmp}}, $i);
-						}
-					} else {
-						$self->{rsBed}->[$i] = undef;
-					}
-					if(scalar( grep{ scalar(@$_) >1 } values %li ) > 0){
-						my %bdc = ();
-
-						map{
-							map{
-								# print "$self->{rsBed}->[$_]\n";
-								my $bd = $self->{rsBed}->[$_];
-								$bd =~ s/\w+|\d+|\s+//g;
-								++$bdc{f_1} if $bd eq '==' || $bd eq '>' || $bd eq '<';
-								++$bdc{f_2} if $bd eq '==' || $bd eq '!=';
-							} @$_;
-							# print Dumper(\%li)."\n";
-							# print Dumper(\%bdc)."\n"  if  $bdc{f_1} > 1 || $bdc{f_2} > 1;
-							# print '-' x 65  . "\n";
-						} grep{ scalar(@$_) > 1 } values %li;
-						$self->{irrelevant} = $bdc{f_1} > 1 || $bdc{f_2} > 1 ? 1 : 0;
-					}
+					$self->{rsBed}->[$i] = defined($self->{set}->[$i]) ? ::bedText($Bed->[$i], $self->{set}->[$i]) : undef;
 				}
+				# combinations that can't happen (e.g. x == y with x > y) are 'irrelevant'
+				$self->{irrelevant} = ::contradicts(grep{ defined } @{$self->{rsBed}}) ? 1 : 0;
 
 				return(bless($self, $class));
 			}
@@ -273,14 +326,7 @@ sub turnTable
 
 				for(my $i=0; $i <= $#$Bed; $i++ ){
 					if(defined($self->{set}->[$i])){
-						$bd = $Bed->[$i];
-
-						$self->{set}->[$i] ? $bd =~ s/\# // : $bd =~ s/\# /nicht /;
-						if(!$self->{set}->[$i]){
-							$bd =~ s/ \< / \> /g;
-							$bd =~ s/ \> / \< /g;
-							$bd =~ s/ \=\= / \!\= /g;
-						}
+						$bd = ::bedText($Bed->[$i], $self->{set}->[$i]);
 						push(@{$ba{'Bed'}}, $bd);
 					}
 				}

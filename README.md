@@ -5,7 +5,7 @@ A small Perl tool for **decision tables** (German: *Entscheidungstabellen*) that
 You describe conditions, actions and rules as data. The tool then:
 
 - **finds missing rules**, meaning condition combinations that no rule covers;
-- **ignores impossible combinations**, such as `x == y` together with `x > y`, so you don't get flooded with false gaps;
+- **ignores impossible combinations**, so you don't get flooded with false gaps. That covers direct ones like `x == y` together with `x > y`, and chained ones like `DBx == x`, `DBy == y`, `x < y` together with `DBx > DBy`;
 - **finds overlapping rules** and lists the exact cases where two rules both apply;
 - **finds duplicate and redundant rules**, where one rule is fully covered by another with the same actions;
 - **compiles the table into a Perl sub** that you can call with real values.
@@ -57,7 +57,7 @@ $rt->report;
 
 In each rule, the first list holds the conditions: `1` = yes, `0` = no, `-` = don't care. The second list holds the actions: `1` = do it, `-` = don't.
 
-When a condition is `0`, the report shows it negated: `x > y` becomes `x < y`, and `x == y` becomes `x != y`. A `#` in a text condition becomes `nicht` (not), for example `'wenn # PK'`.
+When a condition is `0`, it is negated exactly. `x > y` becomes `x <= y`, `x < y` becomes `x >= y`, and `x == y` becomes `x != y`. Anything that isn't a single comparison `a OP b` (with spaces around the operator) becomes `!(...)`. A `#` in a text condition becomes `nicht` (not), for example `'wenn # PK'`.
 
 ## What the report shows
 
@@ -66,11 +66,12 @@ The full output is in [`examples/output.txt`](examples/output.txt). Because one 
 ```
 Fehlende Regeln:
 --------------------------------------------------
-Regel Nr.: 7 NNNYYY
+...
+Regel Nr.: 9 NNNNYY
 x != y
-x < y
-abs(px2 - px1) < abs(py2 - py1)
-DBx > DBy
+x <= y
+abs(px2 - px1) <= abs(py2 - py1)
+DBx <= DBy
 DBx == x
 DBy == y
 -------------
@@ -78,7 +79,9 @@ lfr = "--"
 &::swap(\DBx, \DBy)
 ```
 
-The listed actions are the `else` actions, so they show what would happen today in that case.
+The listed actions are the `else` actions, so they show what would happen today in that case. Rules 7 and 8 (not shown) are the two `x == y` cases: no rule handles `x == y`, so only `else` covers it.
+
+The row `NNNYYY` (the same as above but with `DBx > DBy`) is not reported, because it can't happen: `DBx == x`, `DBy == y` and `x < y` imply `DBx < DBy`.
 
 Overlaps are listed per rule pair, with the cases they share:
 
@@ -120,7 +123,7 @@ Strictly speaking, `Code()` interprets the table rather than generating Perl sou
 - This is a single script, not a CPAN module. To use your own table, change the `RegTable->new(...)` call at the end of `et_check.pl`. More examples (traffic offences, foreign losses under §2a EStG) are commented out right above it.
 - All 2^n combinations are generated. That is fine up to about 15 conditions, but above that you need a SAT solver or a rules engine.
 - Conditions and actions are strings evaluated with `eval`, so only use tables you trust.
-- Negating `x > y` gives `x < y`, not `x <= y`. The equality case has to be its own condition, as with `x == y` in the example.
+- The check for impossible combinations only understands single comparisons (`a == b`, `a < b`, ...) between terms that are written the same way. It doesn't know arithmetic, so `abs(a) >= 0` or `x + 1 > x` are just two unrelated terms to it.
 - Rule numbers in the report start at 2.
 - In `Code()`, the `else` actions run when no matching rule assigned any of the variables the `else` actions assign. In the example, `else` sets `lfr`. Rules 2 and 3 only set `DBx`/`DBy`, so they don't prevent `else` from running. If the `else` actions assign nothing (only function calls), `else` runs when no rule matched at all.
 
@@ -134,6 +137,7 @@ prove t/
 - `t/conflict.t`: an added contradicting rule is reported as an overlap.
 - `t/redundant.t`: a duplicate rule and a covered rule are detected.
 - `t/code.t`: the compiled sub returns the right result for every branch of the table, including the gap and `x == y` (also when rules 2/3 fire at the same time), and prints nothing by default. A second small table checks that `else` runs only when no rule matched.
+- `t/negation.t`: exact negation (`>` → `<=`, `<` → `>=`, ...), contradictions across variables, and the boundary `|dx| == |dy|`, both in the report and in the compiled sub.
 
 ## Glossary
 

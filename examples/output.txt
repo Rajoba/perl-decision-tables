@@ -20,13 +20,13 @@ lfr = "SB"
 Regel Nr.: 5 NYN---
 x != y
 x > y
-abs(px2 - px1) < abs(py2 - py1)
+abs(px2 - px1) <= abs(py2 - py1)
 -------------
 lfr = "BB"
 
 Regel Nr.: 6 NNY---
 x != y
-x < y
+x <= y
 abs(px2 - px1) > abs(py2 - py1)
 -------------
 lfr = "BB"
@@ -39,22 +39,33 @@ XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 
 Fehlende Regeln:
 --------------------------------------------------
-Regel Nr.: 7 NNNYYY
-x != y
-x < y
-abs(px2 - px1) < abs(py2 - py1)
-DBx > DBy
+Regel Nr.: 7 YNYNYY
+x == y
+x <= y
+abs(px2 - px1) > abs(py2 - py1)
+DBx <= DBy
 DBx == x
 DBy == y
 -------------
 lfr = "--"
 &::swap(\DBx, \DBy)
 
-Regel Nr.: 8 NNNNYY
+Regel Nr.: 8 YNNNYY
+x == y
+x <= y
+abs(px2 - px1) <= abs(py2 - py1)
+DBx <= DBy
+DBx == x
+DBy == y
+-------------
+lfr = "--"
+&::swap(\DBx, \DBy)
+
+Regel Nr.: 9 NNNNYY
 x != y
-x < y
-abs(px2 - px1) < abs(py2 - py1)
-DBx < DBy
+x <= y
+abs(px2 - px1) <= abs(py2 - py1)
+DBx <= DBy
 DBx == x
 DBy == y
 -------------
@@ -62,7 +73,7 @@ lfr = "--"
 &::swap(\DBx, \DBy)
 
 -----------------------------------------------------------------
-Regel 2 (----N-) und 3 (-----N) überkreuzen sich in 8 Fällen:
+Regel 2 (----N-) und 3 (-----N) überkreuzen sich in 12 Fällen:
     NNNNNN
     NNNYNN
     NNYNNN
@@ -71,6 +82,10 @@ Regel 2 (----N-) und 3 (-----N) überkreuzen sich in 8 Fällen:
     NYNYNN
     NYYNNN
     NYYYNN
+    YNNNNN
+    YNNYNN
+    YNYNNN
+    YNYYNN
 
 -----------------------------------------------------------------
 Regel 2 (----N-) und 4 (NYY---) überkreuzen sich in 4 Fällen:
@@ -126,7 +141,7 @@ code >>>> $lidx{'DBy'} = $_[1]
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 x != y
 x > y
-abs(px2 - px1) < abs(py2 - py1)
+abs(px2 - px1) <= abs(py2 - py1)
 code >>>> $lidx{'lfr'} = "BB"
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 DBx == 100
