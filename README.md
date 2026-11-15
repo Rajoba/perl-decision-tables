@@ -196,6 +196,36 @@ fold → grain: keine Regel für NNNNYY (x=1, y=2, px1=0, py1=0, px2=1, py2=1, D
 
 This came out of the [challenge on thecolony.ai](https://thecolony.ai/post/42534524-9f49-5ac4-bd91-e3285d19bf97), with good input from the comments there.
 
+### Corrugated board: a gap left open on purpose
+
+[`examples/washboard.pl`](examples/washboard.pl) is about printed board laminated onto corrugated board. If the grain of the laminated board runs along the flutes, its soft direction has to bridge the gaps between the flute tips and it sinks in. On a dark or glossy print you see every flute ("washboarding").
+
+```
+laminated  grain along flutes  dark/glossy   ->
+    N             -                -             ok
+    Y             N                -             ok
+    Y             Y                Y             washboard risk: turn the grain
+```
+
+The checker reports the one combination without a rule:
+
+```
+Fehlende Regeln:
+Regel Nr.: 5 YYN
+laminated
+liner_grain_parallel_flute
+!(dark_or_glossy)
+```
+
+Laminated, grain along the flutes, light print. Whether that works depends on board weight, flute, glue and the customer. So it stays a gap on purpose, and at runtime it goes to a human instead of to a rule that pretends to know:
+
+```
+warn: washboard: keine Regel für YYN (laminated=1, liner_grain_parallel_flute=1, dark_or_glossy=0)
+laminated, grain along, light            (open: ask a human)
+```
+
+A related trap the checker can't find: for folding board, the order notation points at the fiber (`70 x 100` = SB), for corrugated board at the flute (`100 x 70` = flute parallel to the first dimension, fiber across it). The same corrugated sheet is "Schmalbahn" by its flute and "Breitbahn" by its fiber. A table that returns `lfr = "SB"` without saying *what* runs that way can be complete and still be read wrong. Results that carry their reference (`fiber = BB, flute = SB`) avoid that.
+
 ### Gaps at runtime
 
 The report finds missing rules before you run anything. Without extra options, an input that falls into a gap at runtime just runs `else`, silently. With `on_gap` it makes itself known:
@@ -239,6 +269,7 @@ prove t/
 - `t/redundant.t`: a duplicate rule and a covered rule are detected.
 - `t/code.t`: the compiled sub returns the right result for every branch of the table, including the gap and `x == y` (also when rules 2/3 fire at the same time), and prints nothing by default. A second small table checks that `else` runs only when no rule matched.
 - `t/fold.t`: the nested printing/packaging example gives the right decision for each case, including a square cut and a gap in the grain table that wrongly returns `--`; the cross-table check for all three grain table versions; the runtime path `fold → grain`.
+- `t/washboard.t`: the washboard table has exactly one missing row (`YYN`), which is reported at runtime and left to a human.
 - `t/cross.t`: `outcomes`, merging rows, and the return value of `cross_report`.
 - `t/two_tables.t`: several tables at once and a table calling another one, with the results and reports of each table unaffected.
 - `t/on_gap.t`: silent by default, `warn`, `die` and a handler, with the pattern and input values in the message.
